@@ -6,14 +6,15 @@ import (
 	"gopkg.in/fatih/set.v0"
 	"math/rand"
 	"strings"
+	//"time"
 )
 
 const (
-	IntRatio                 = 85
+	IntRatio                 = 90
 	FloatRatio               = 10
 	TagSize                  = 6
 	MetricPerMetricNameRatio = 2
-	TagsPerMetric            = 6
+	TagsPerMetric            = 4
 	MaxNumValuePerTag        = 10
 	MetricNameSize           = 20
 	BufferSize               = 100000
@@ -48,7 +49,7 @@ func (m *MetricFloat) String() string {
 }
 
 func (m *MetricFloat) Change(t int64) {
-	m.value += rand.NormFloat64()*10 - 4
+	m.value += rand.NormFloat64()*10
 }
 
 func NewMetricFloat(name string, tags string) *MetricFloat {
@@ -167,7 +168,7 @@ func NewMetricFactory(numMetrics int, numTags int, mandatoryTags map[string]int,
 	}
 
 	// summoning Randomness!
-	rand.Seed(endTimestamp+timestamp+int64(numMetrics))
+	//rand.Seed(endTimestamp+timestamp+int64(numMetrics))
 
 	var i = 0
 	//fmt.Println("Loop!",numMetrics,limitInt,limitFloat,numPerMetricName)
@@ -222,6 +223,7 @@ func (mf *MetricFactory) Produce() {
 			close(mf.Output)
 			return
 			default:
+			//rand.Seed(time.Now().UnixNano())
 			for _, metric := range mf.metricList {
 				//fmt.Println("Producing: ",fmt.Sprintf("%s %d", metric.String(), mf.timestamp))
 				mf.Output <- fmt.Sprintf("%s %d", metric.String(), mf.timestamp)

@@ -19,10 +19,15 @@ Doesn't do much.
 2. Build
 
 ```
+go get github.com/google/uuid
+go get gopkg.in/fatih/set.v0
 go build telegraf.go
 ```
 
 3. Use
 
-Doesn't do much for now apart from printing two little metrics
-More will come soon.
+```
+./telegraf_datagen
+```
+
+Doesn't have many options at the moment :-(
