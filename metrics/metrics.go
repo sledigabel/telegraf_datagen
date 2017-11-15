@@ -6,9 +6,9 @@ import (
 	"gopkg.in/fatih/set.v0"
 	"math/rand"
 	"strings"
-	//"time"
 )
 
+// Defaults
 const (
 	IntRatio                 = 90
 	FloatRatio               = 10
@@ -19,6 +19,37 @@ const (
 	MetricNameSize           = 20
 	BufferSize               = 100000
 )
+
+type ConfigSet struct {
+	IntRatio                 int
+	FloatRatio               int
+	TagSize                  int
+	MetricPerMetricNameRatio int
+	TagsPerMetric            int
+	MaxNumValuePerTag        int
+	MetricNameSize           int
+	BufferSize               int
+	NumMetrics               int
+	NumTags                  int
+	MandatoryTags            map[string]int
+	Start                    int64
+	End                      int64
+	Step                     int64
+}
+
+func NewConfigSet() *ConfigSet {
+	// Setting default values
+	var c ConfigSet
+	c.IntRatio = IntRatio
+	c.FloatRatio = FloatRatio
+	c.TagSize = TagSize
+	c.MetricPerMetricNameRatio = MetricPerMetricNameRatio
+	c.TagsPerMetric = TagsPerMetric
+	c.MaxNumValuePerTag = MaxNumValuePerTag
+	c.MetricNameSize = MetricNameSize
+	c.BufferSize = BufferSize
+	return &c
+}
 
 type MetricInt struct {
 	name  string
@@ -49,7 +80,7 @@ func (m *MetricFloat) String() string {
 }
 
 func (m *MetricFloat) Change(t int64) {
-	m.value += rand.NormFloat64()*10
+	m.value += rand.NormFloat64() * 10
 }
 
 func NewMetricFloat(name string, tags string) *MetricFloat {
@@ -94,10 +125,10 @@ func NewTagsFactoryFromList(tagList map[string]int) *TagsFactory {
 
 func NewTagsFactoryFromNum(numTags int) *TagsFactory {
 	tf := make(TagsFactory, numTags)
-	for t := 0; t<numTags; t++ {
+	for t := 0; t < numTags; t++ {
 		tagName := "tag_" + uuid.New().String()[:TagSize]
-		for k := 0; k< MaxNumValuePerTag; k++ {
-			tf[tagName] = append(tf[tagName],string('_') + uuid.New().String()[:TagSize])
+		for k := 0; k < MaxNumValuePerTag; k++ {
+			tf[tagName] = append(tf[tagName], string('_')+uuid.New().String()[:TagSize])
 		}
 	}
 	return &tf
@@ -144,58 +175,49 @@ type MetricFactory struct {
 	Stop         chan bool
 }
 
-func NewMetricFactory(numMetrics int, numTags int, mandatoryTags map[string]int, timestamp int64, step int64, endTimestamp int64) *MetricFactory {
+func NewMetricFactory(c *ConfigSet) *MetricFactory {
 
-	mandatoryTagMap := NewTagsFactoryFromList(mandatoryTags)
-	optionalTag := TagsPerMetric - len(mandatoryTags)
+	mandatoryTagMap := NewTagsFactoryFromList(c.MandatoryTags)
+	optionalTag := c.TagsPerMetric - len(c.MandatoryTags)
 	optionalTagMap := NewTagsFactoryFromNum(optionalTag)
-	//fmt.Println(mandatoryTagMap)
-	//fmt.Println(optionalTag,optionalTagMap)
 
-	ml := make([]Metric, numMetrics)
+	ml := make([]Metric, c.NumMetrics)
 
 	// calculating ratios
 	// metric < limit_int: metric will be INT
 	// limit_int <= metric < limit_float: metric will be FLOAT
 	// limit_float < metric: metric will be BOOL
-	var limitInt = numMetrics * IntRatio / 100
-	var limitFloat = numMetrics * (FloatRatio + IntRatio) / 100
+	var limitInt = c.NumMetrics * c.IntRatio / 100
+	var limitFloat = c.NumMetrics * (c.FloatRatio + c.IntRatio) / 100
 
 	// calculating how many metrics per metric name (min 1)
-	var numPerMetricName = numMetrics * MetricPerMetricNameRatio / 100
+	var numPerMetricName = c.NumMetrics * c.MetricPerMetricNameRatio / 100
 	if numPerMetricName == 0 {
 		numPerMetricName = 1
 	}
 
-	// summoning Randomness!
-	//rand.Seed(endTimestamp+timestamp+int64(numMetrics))
-
 	var i = 0
-	//fmt.Println("Loop!",numMetrics,limitInt,limitFloat,numPerMetricName)
 	for {
-		if i >= numMetrics {
+		if i >= c.NumMetrics {
 			break
 		}
 		if i < limitInt {
-			metricName := "int." + uuid.New().String()[:MetricNameSize]
-			for m := 0; m < numPerMetricName && i < numMetrics; m++ {
-				//fmt.Println("Producing metric",i,"as a int")
+			metricName := "int." + uuid.New().String()[:c.MetricNameSize]
+			for m := 0; m < numPerMetricName && i < c.NumMetrics; m++ {
 				mt := strings.Join(append(mandatoryTagMap.KVAllTags(), optionalTagMap.KVSomeTags(optionalTag)...), ",")
 				ml[i] = NewMetricInt(metricName, mt)
 				i++
 			}
 		} else if i < limitFloat {
-			metricName := "float." + uuid.New().String()[:MetricNameSize]
-			for m := 0; m < numPerMetricName && i < numMetrics; m++ {
-				//fmt.Println("Producing metric",i,"as a float")
+			metricName := "float." + uuid.New().String()[:c.MetricNameSize]
+			for m := 0; m < numPerMetricName && i < c.NumMetrics; m++ {
 				mt := strings.Join(append(mandatoryTagMap.KVAllTags(), optionalTagMap.KVSomeTags(optionalTag)...), ",")
 				ml[i] = NewMetricFloat(metricName, mt)
 				i++
 			}
 		} else {
-			metricName := "bool." + uuid.New().String()[:MetricNameSize]
-			for m := 0; m < numPerMetricName && i < numMetrics; m++ {
-				//fmt.Println("Producing metric",i,"as a bool")
+			metricName := "bool." + uuid.New().String()[:c.MetricNameSize]
+			for m := 0; m < numPerMetricName && i < c.NumMetrics; m++ {
 				mt := strings.Join(append(mandatoryTagMap.KVAllTags(), optionalTagMap.KVSomeTags(optionalTag)...), ",")
 				ml[i] = NewMetricBool(metricName, mt)
 				i++
@@ -206,10 +228,10 @@ func NewMetricFactory(numMetrics int, numTags int, mandatoryTags map[string]int,
 	// building the metric factory
 	mf := &MetricFactory{}
 	mf.metricList = ml
-	mf.timestamp = timestamp
-	mf.step = step
-	mf.endTimestamp = endTimestamp
-	mf.Output = make(chan string, BufferSize)
+	mf.timestamp = c.Start
+	mf.step = c.Step
+	mf.endTimestamp = c.End
+	mf.Output = make(chan string, c.BufferSize)
 	mf.Stop = make(chan bool)
 
 	return mf
@@ -219,21 +241,17 @@ func (mf *MetricFactory) Produce() {
 	// current round:
 	for {
 		select {
-			case <-mf.Stop:
+		case <-mf.Stop:
 			close(mf.Output)
 			return
-			default:
-			//rand.Seed(time.Now().UnixNano())
+		default:
 			for _, metric := range mf.metricList {
-				//fmt.Println("Producing: ",fmt.Sprintf("%s %d", metric.String(), mf.timestamp))
 				mf.Output <- fmt.Sprintf("%s %d", metric.String(), mf.timestamp)
 				metric.Change(mf.step)
 			}
 		}
-		//fmt.Println("Inc time.")
 		mf.timestamp += mf.step
 		if mf.timestamp >= mf.endTimestamp {
-			//fmt.Println("Goodbye.")
 			close(mf.Output)
 			return
 		}

@@ -9,8 +9,19 @@ import (
 )
 
 // date format input
-const shortForm = "2006-01-02 15:04:05"
+const (
+	longForm = "2006-01-02 15:04:05"
+	shortForm = "2006-01-02"
+)
 
+func ParseTimeStamp(s string) (time.Time, error) {
+	// try with the long form first
+	t, err := time.Parse(longForm,s)
+	if err != nil {
+		return time.Parse(shortForm,s)
+	}
+	return t,err
+}
 
 var ship chan string
 var inMs int64 = 1000000
@@ -35,19 +46,15 @@ func main(){
 	done = make(chan bool)
 	var step int64 = 60000 * inMs
 	ship = make(chan string,100)
-	//var numMetrics int = 100
-	//var numTags = 3
-	//var numUniqueTags = 3
-	//var lenTags=5
 	rand.Seed(time.Now().Unix())
 
-	timestp, err := time.Parse(shortForm,"2017-11-12 00:00:00")
+	timestp, err := ParseTimeStamp("2017-11-12")
 	if err != nil {
 		panic(err)
 	}
 	t1 = timestp.UnixNano()
 
-	timestp2, err := time.Parse(shortForm,"2017-11-13 18:00:00")
+	timestp2, err := ParseTimeStamp("2017-11-13 18:00:00")
 	if err != nil {
 		panic(err)
 	}
@@ -59,8 +66,16 @@ func main(){
 	mandTags["hostname"] = 20
 	mandTags["env"] = 3
 
+	c := metrics.NewConfigSet()
+	c.NumMetrics = 20000
+	c.NumTags = 300
+	c.MandatoryTags = mandTags
+	c.Start = t1
+	c.End = t2
+	c.Step = step
+
 	//fmt.Println("Creating metrics")
-	metricFactory := metrics.NewMetricFactory(20000,300, mandTags,t1,step,t2)
+	metricFactory := metrics.NewMetricFactory(c)
 
 	//fmt.Println(metricFactory)
 	go readChannel(metricFactory.Output)
