@@ -10,21 +10,10 @@ import (
 
 // date format input
 const (
-	longForm = "2006-01-02 15:04:05"
-	shortForm = "2006-01-02"
+	inMs int64 = 1000000
 )
 
-func ParseTimeStamp(s string) (time.Time, error) {
-	// try with the long form first
-	t, err := time.Parse(longForm,s)
-	if err != nil {
-		return time.Parse(shortForm,s)
-	}
-	return t,err
-}
-
 var ship chan string
-var inMs int64 = 1000000
 var done chan bool
 
 func readChannel(input chan string){
@@ -39,27 +28,14 @@ func readChannel(input chan string){
 func main(){
 
 	// TODO: add flags and parameters
-	var (
-		t1 int64
-		t2 int64
-	)
+
 	done = make(chan bool)
 	var step int64 = 60000 * inMs
 	ship = make(chan string,100)
 	rand.Seed(time.Now().Unix())
 
-	timestp, err := ParseTimeStamp("2017-11-12")
-	if err != nil {
-		panic(err)
-	}
-	t1 = timestp.UnixNano()
-
-	timestp2, err := ParseTimeStamp("2017-11-13 18:00:00")
-	if err != nil {
-		panic(err)
-	}
-	t2 = timestp2.UnixNano()
-
+	timestp := "2017-11-12"
+	timestp2 := "2017-11-13 18:00:00"
 
 	mandTags := make(map[string]int,3)
 	mandTags["dc"] = 5
@@ -70,8 +46,8 @@ func main(){
 	c.NumMetrics = 20000
 	c.NumTags = 300
 	c.MandatoryTags = mandTags
-	c.Start = t1
-	c.End = t2
+	c.Start = timestp
+	c.End = timestp2
 	c.Step = step
 
 	//fmt.Println("Creating metrics")

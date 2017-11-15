@@ -6,6 +6,7 @@ import (
 	"gopkg.in/fatih/set.v0"
 	"math/rand"
 	"strings"
+	"time"
 )
 
 // Defaults
@@ -18,7 +19,22 @@ const (
 	MaxNumValuePerTag        = 10
 	MetricNameSize           = 20
 	BufferSize               = 100000
+	longForm = "2006-01-02 15:04:05"
+	shortForm = "2006-01-02"
 )
+
+func ParseTimeStamp(s string) time.Time {
+	// try with the long form first
+	t, err := time.Parse(longForm,s)
+	if err != nil {
+		t, err = time.Parse(shortForm,s)
+		if err != nil {
+			panic(err)
+		}
+		return t
+	}
+	return t
+}
 
 type ConfigSet struct {
 	IntRatio                 int
@@ -32,8 +48,8 @@ type ConfigSet struct {
 	NumMetrics               int
 	NumTags                  int
 	MandatoryTags            map[string]int
-	Start                    int64
-	End                      int64
+	Start                    string
+	End                      string
 	Step                     int64
 }
 
@@ -228,9 +244,10 @@ func NewMetricFactory(c *ConfigSet) *MetricFactory {
 	// building the metric factory
 	mf := &MetricFactory{}
 	mf.metricList = ml
-	mf.timestamp = c.Start
+	// parsing timestamps
+	mf.timestamp = ParseTimeStamp(c.Start).UnixNano()
+	mf.endTimestamp = ParseTimeStamp(c.End).UnixNano()
 	mf.step = c.Step
-	mf.endTimestamp = c.End
 	mf.Output = make(chan string, c.BufferSize)
 	mf.Stop = make(chan bool)
 
