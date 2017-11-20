@@ -18,16 +18,17 @@ const (
 	TagsPerMetric            = 4
 	MaxNumValuePerTag        = 10
 	MetricNameSize           = 20
-	BufferSize               = 100000
-	longForm = "2006-01-02 15:04:05"
-	shortForm = "2006-01-02"
+	MetricBufferSize         = 100000
+	longForm                 = "2006-01-02 15:04:05"
+	shortForm                = "2006-01-02"
+	continuous               = false
 )
 
 func ParseTimeStamp(s string) time.Time {
 	// try with the long form first
-	t, err := time.Parse(longForm,s)
+	t, err := time.Parse(longForm, s)
 	if err != nil {
-		t, err = time.Parse(shortForm,s)
+		t, err = time.Parse(shortForm, s)
 		if err != nil {
 			panic(err)
 		}
@@ -37,20 +38,21 @@ func ParseTimeStamp(s string) time.Time {
 }
 
 type ConfigSet struct {
-	IntRatio                 int
-	FloatRatio               int
-	TagSize                  int
-	MetricPerMetricNameRatio int
-	TagsPerMetric            int
-	MaxNumValuePerTag        int
-	MetricNameSize           int
-	BufferSize               int
-	NumMetrics               int
-	NumTags                  int
-	MandatoryTags            map[string]int
-	Start                    string
-	End                      string
-	Step                     int64
+	IntRatio                 int            `toml:"int_ratio"`
+	FloatRatio               int            `toml:"float_ratio"`
+	TagSize                  int            `toml:"tag_size"`
+	MetricPerMetricNameRatio int            `toml:"metric_per_metricname_ratio"`
+	TagsPerMetric            int            `toml:"tags_per_metric"`
+	MaxNumValuePerTag        int            `toml:"max_num_value_per_tag"`
+	MetricNameSize           int            `toml:"metric_name_size"`
+	BufferSize               int            `toml:"metric_buffer_size"`
+	NumMetrics               int            `toml:"num_metrics"`
+	NumTags                  int            `toml:"num_tags"`
+	MandatoryTags            map[string]int `toml:"mandatory_tags"`
+	Start                    string         `toml:"start"`
+	End                      string         `toml:"end"`
+	Step                     int64          `toml:"step"`
+	Continuous               bool           `toml:"continuous"`
 }
 
 func NewConfigSet() *ConfigSet {
@@ -63,7 +65,8 @@ func NewConfigSet() *ConfigSet {
 	c.TagsPerMetric = TagsPerMetric
 	c.MaxNumValuePerTag = MaxNumValuePerTag
 	c.MetricNameSize = MetricNameSize
-	c.BufferSize = BufferSize
+	c.BufferSize = MetricBufferSize
+	c.Continuous = continuous
 	return &c
 }
 
@@ -187,6 +190,8 @@ type MetricFactory struct {
 	timestamp    int64
 	step         int64
 	endTimestamp int64
+	continuous   bool
+	Counter      int64
 	Output       chan string
 	Stop         chan bool
 }
@@ -248,9 +253,9 @@ func NewMetricFactory(c *ConfigSet) *MetricFactory {
 	mf.timestamp = ParseTimeStamp(c.Start).UnixNano()
 	mf.endTimestamp = ParseTimeStamp(c.End).UnixNano()
 	mf.step = c.Step
+	mf.continuous = c.Continuous
 	mf.Output = make(chan string, c.BufferSize)
-	mf.Stop = make(chan bool)
-
+	mf.Stop = make(chan bool, 1)
 	return mf
 }
 
@@ -259,18 +264,54 @@ func (mf *MetricFactory) Produce() {
 	for {
 		select {
 		case <-mf.Stop:
+			fmt.Println("Stopping the production.")
 			close(mf.Output)
 			return
+
 		default:
 			for _, metric := range mf.metricList {
 				mf.Output <- fmt.Sprintf("%s %d", metric.String(), mf.timestamp)
+				mf.Counter++
 				metric.Change(mf.step)
 			}
 		}
 		mf.timestamp += mf.step
-		if mf.timestamp >= mf.endTimestamp {
+		// if no timestamp, wait until catch up with reality
+		if mf.continuous && mf.timestamp >= time.Now().UnixNano() {
+			fmt.Println("Caught up with reality")
+			if mf.continuous {
+				mf.ProduceNow()
+				return
+			}
+			return
+		} else if mf.timestamp >= mf.endTimestamp {
 			close(mf.Output)
 			return
 		}
 	}
+}
+
+func (mf *MetricFactory) ProduceNow() {
+	tick := time.NewTicker(time.Duration(mf.step))
+	// current round:
+	for {
+		select {
+		case <-mf.Stop:
+			fmt.Println("Stopping the production.")
+			close(mf.Output)
+			return
+
+		case <-tick.C:
+			mf.timestamp = time.Now().UnixNano()
+			for _, metric := range mf.metricList {
+				mf.Output <- fmt.Sprintf("%s %d", metric.String(), mf.timestamp)
+				mf.Counter++
+				metric.Change(mf.step)
+			}
+		}
+	}
+}
+
+func (mf *MetricFactory) CurrentTime() time.Time {
+	return time.Unix(mf.timestamp/time.Second.Nanoseconds(), 0)
 }
