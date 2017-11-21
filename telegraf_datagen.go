@@ -38,7 +38,7 @@ func main() {
 	ship = make(chan string, 100)
 	rand.Seed(time.Now().Unix())
 
-	stat_period := time.Second //* 15
+	statPeriod := time.Minute
 
 	timestp := "2017-11-20 17:41:00"
 	timestp2 := "2017-11-20 18:00:00"
@@ -77,7 +77,7 @@ func main() {
 	dataGen.be.Connect()
 	go dataGen.be.Expedite()
 
-	stats := time.NewTicker(stat_period)
+	stats := time.NewTicker(statPeriod)
 
 	go dataGen.mf.Produce()
 	// transmit the data from the metricFactory to the sender
@@ -98,8 +98,8 @@ func main() {
 			produced, sent := dataGen.mf.Counter, dataGen.be.BytesSent
 			str := fmt.Sprintf("Produced: %d (%.2fK/s), Sent: %.2fKB/s, Queue: %d, timestamp: %s",
 				produced,
-				float64(produced-dataGen.prevProduced)/stat_period.Seconds()/1000,
-				float64(sent-dataGen.prevSent)/stat_period.Seconds()/1024,
+				float64(produced-dataGen.prevProduced)/statPeriod.Seconds()/1000,
+				float64(sent-dataGen.prevSent)/statPeriod.Seconds()/1024,
 				len(dataGen.mf.Output),
 				dataGen.mf.CurrentTime().Format(time.Stamp))
 			fmt.Println(str)
