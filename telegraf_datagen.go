@@ -14,12 +14,8 @@ import (
 
 // date format input
 const (
-	inMs           int64  = 1000000
 	configFileName string = "telegraf_datagen.conf"
 )
-
-var ship chan string
-var done chan bool
 
 type DataGen struct {
 	mf           *metrics.MetricFactory
@@ -33,25 +29,11 @@ func main() {
 	// TODO: add flags and parameters
 
 	sigs := make(chan os.Signal, 1)
-	done = make(chan bool)
-	var step int64 = 60000 * inMs
-	ship = make(chan string, 100)
 	rand.Seed(time.Now().Unix())
 
 	statPeriod := time.Minute
 
-	timestp := "2017-11-20 17:41:00"
-	timestp2 := "2017-11-20 18:00:00"
-
 	c := metrics.NewConfigSet()
-	c.NumMetrics = 20000
-	c.NumTags = 300
-	//c.MandatoryTags = mandTags
-	c.Start = timestp
-	c.End = timestp2
-	c.Step = step
-
-	fmt.Println(c)
 
 	dataGen := &DataGen{}
 	dataGen.be = sender.NewEndpoint()
@@ -73,13 +55,15 @@ func main() {
 
 	dataGen.mf = metrics.NewMetricFactory(c)
 
-	//backend.Send = metricFactory.Output
-	dataGen.be.Connect()
-	go dataGen.be.Expedite()
+	if !dataGen.be.Debug {
+		dataGen.be.Connect()
+		go dataGen.be.Expedite()
+	}
 
 	stats := time.NewTicker(statPeriod)
 
 	go dataGen.mf.Produce()
+
 	// transmit the data from the metricFactory to the sender
 	for {
 		select {
@@ -105,7 +89,11 @@ func main() {
 			fmt.Println(str)
 			dataGen.prevProduced, dataGen.prevSent = produced, sent
 		case i := <-dataGen.mf.Output:
-			dataGen.be.Send <- i
+			if dataGen.be.Debug {
+				fmt.Println(i)
+			} else {
+				dataGen.be.Send <- i
+			}
 		}
 	}
 }

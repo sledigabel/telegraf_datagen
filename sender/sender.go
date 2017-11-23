@@ -33,6 +33,7 @@ type Endpoint struct {
 	conn                net.Conn
 	Stop                chan bool // any signal would cause a stop.
 	State               int
+	Debug               bool `toml:"debug"`
 }
 
 func NewEndpoint() *Endpoint {
@@ -46,6 +47,7 @@ func NewEndpoint() *Endpoint {
 	ep.FlushPeriod = FlushPeriod
 	ep.Stop = make(chan bool, 1)
 	ep.State = STOPPED
+	ep.Debug = false
 	return ep
 }
 

@@ -22,9 +22,11 @@ const (
 	longForm                 = "2006-01-02 15:04:05"
 	shortForm                = "2006-01-02"
 	continuous               = false
+	NumMetrics               = 100
+	step                     = time.Minute
 )
 
-func ParseTimeStamp(s string) time.Time {
+func parseTimeStamp(s string) time.Time {
 	// try with the long form first
 	t, err := time.Parse(longForm, s)
 	if err != nil {
@@ -51,13 +53,14 @@ type ConfigSet struct {
 	MandatoryTags            map[string]int `toml:"mandatory_tags"`
 	Start                    string         `toml:"start"`
 	End                      string         `toml:"end"`
-	Step                     int64          `toml:"step"`
+	Step                     time.Duration  `toml:"step"`
 	Continuous               bool           `toml:"continuous"`
 }
 
 func NewConfigSet() *ConfigSet {
 	// Setting default values
 	var c ConfigSet
+	c.NumMetrics = NumMetrics
 	c.IntRatio = IntRatio
 	c.FloatRatio = FloatRatio
 	c.TagSize = TagSize
@@ -67,6 +70,9 @@ func NewConfigSet() *ConfigSet {
 	c.MetricNameSize = MetricNameSize
 	c.BufferSize = MetricBufferSize
 	c.Continuous = continuous
+	c.Step = step
+	c.Start = time.Now().Add(-time.Hour * 24).Format(longForm)
+	c.End = time.Now().Format(longForm)
 	return &c
 }
 
@@ -80,7 +86,7 @@ func (m *MetricInt) String() string {
 	return fmt.Sprintf("%s,%s value=%d", m.name, m.tags, m.value)
 }
 
-func (m *MetricInt) Change(t int64) {
+func (m *MetricInt) Change() {
 	m.value += rand.Int63n(10) - 4
 }
 
@@ -98,7 +104,7 @@ func (m *MetricFloat) String() string {
 	return fmt.Sprintf("%s,%s value=%.4f", m.name, m.tags, m.value)
 }
 
-func (m *MetricFloat) Change(t int64) {
+func (m *MetricFloat) Change() {
 	m.value += rand.NormFloat64() * 10
 }
 
@@ -116,7 +122,7 @@ func (m *MetricBool) String() string {
 	return fmt.Sprintf("%s,%s value=%t", m.name, m.tags, m.value)
 }
 
-func (m *MetricBool) Change(t int64) {
+func (m *MetricBool) Change() {
 	m.value = rand.Intn(20) < 16
 }
 
@@ -126,7 +132,7 @@ func NewMetricBool(name string, tags string) *MetricBool {
 
 type Metric interface {
 	String() string
-	Change(t int64)
+	Change()
 }
 
 type TagsFactory map[string][]string
@@ -188,7 +194,7 @@ func (tf TagsFactory) KVSomeTags(numTags int) []string {
 type MetricFactory struct {
 	metricList   []Metric
 	timestamp    int64
-	step         int64
+	step         time.Duration
 	endTimestamp int64
 	continuous   bool
 	Counter      int64
@@ -250,8 +256,8 @@ func NewMetricFactory(c *ConfigSet) *MetricFactory {
 	mf := &MetricFactory{}
 	mf.metricList = ml
 	// parsing timestamps
-	mf.timestamp = ParseTimeStamp(c.Start).UnixNano()
-	mf.endTimestamp = ParseTimeStamp(c.End).UnixNano()
+	mf.timestamp = parseTimeStamp(c.Start).UnixNano()
+	mf.endTimestamp = parseTimeStamp(c.End).UnixNano()
 	mf.step = c.Step
 	mf.continuous = c.Continuous
 	mf.Output = make(chan string, c.BufferSize)
@@ -260,6 +266,9 @@ func NewMetricFactory(c *ConfigSet) *MetricFactory {
 }
 
 func (mf *MetricFactory) Produce() {
+
+	incStep := mf.step.Nanoseconds()
+
 	// current round:
 	for {
 		select {
@@ -272,10 +281,10 @@ func (mf *MetricFactory) Produce() {
 			for _, metric := range mf.metricList {
 				mf.Output <- fmt.Sprintf("%s %d", metric.String(), mf.timestamp)
 				mf.Counter++
-				metric.Change(mf.step)
+				metric.Change()
 			}
 		}
-		mf.timestamp += mf.step
+		mf.timestamp += incStep
 		// if no timestamp, wait until catch up with reality
 		if mf.continuous && mf.timestamp >= time.Now().UnixNano() {
 			fmt.Println("Caught up with reality")
@@ -292,7 +301,9 @@ func (mf *MetricFactory) Produce() {
 }
 
 func (mf *MetricFactory) ProduceNow() {
-	tick := time.NewTicker(time.Duration(mf.step))
+
+	tick := time.NewTicker(mf.step)
+
 	// current round:
 	for {
 		select {
@@ -306,7 +317,7 @@ func (mf *MetricFactory) ProduceNow() {
 			for _, metric := range mf.metricList {
 				mf.Output <- fmt.Sprintf("%s %d", metric.String(), mf.timestamp)
 				mf.Counter++
-				metric.Change(mf.step)
+				metric.Change()
 			}
 		}
 	}
